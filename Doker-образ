@@ -1,20 +1,40 @@
-# Используем официальный образ Python 3.12
-FROM python:3.12-slim
+# Stage 1: Сборка зависимостей
+FROM python:3.12-slim AS builder
 
-# Устанавливаем рабочую директорию
+# Устанавливаем зависимости системы (минимально)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-# Копируем requirements.txt
+# Копируем только requirements.txt для кэширования
 COPY requirements.txt .
 
-# Устанавливаем зависимости
-RUN pip install --no-cache-dir -r requirements.txt
+# Устанавливаем зависимости в отдельную папку
+RUN pip install --user --no-cache-dir -r requirements.txt
 
-# Копируем весь код
-COPY . .
 
-# Указываем переменную окружения (токен будет передаваться при запуске)
-ENV BOT_TOKEN=f9LHodD0cOIXvDof1IyrdJf5O9Zprvj65zpHZTTAKX28MZg7Syt46umwV3dQx80cePj645cceq0klaAjfDm7 - токен который был указан в качестве токена команды
+# Stage 2: Финальный образ (минимальный и безопасный)
+FROM python:3.12-slim
+
+# Создаём непривилегированного пользователя
+RUN useradd --create-home --shell /bin/bash appuser
+USER appuser
+WORKDIR /home/appuser/app
+
+# Копируем зависимости из builder-стадии
+COPY --from=builder /root/.local /home/appuser/.local
+
+# Добавляем .local/bin в PATH
+ENV PATH=/home/appuser/.local/bin:$PATH
+
+# Копируем код
+COPY --chown=appuser:appuser . .
+
+# Устанавливаем токен через переменную окружения (обязательно!)
+# Значение по умолчанию — placeholder (заменяется при запуске)
+ENV BOT_TOKEN=your_token_here
 
 # Запускаем бота
-CMD ["python", "max_bot.py"]
+CMD ["python", "bot.py"]
